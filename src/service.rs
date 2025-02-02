@@ -40,32 +40,29 @@ impl UrlService {
         &self,
         original_url: String,
         expires_in_days: Option<i64>,
-    ) -> Result<UrlEntry, UrlError> {
-        let expires_at = expires_in_days.map(|days| Utc::now() + Duration::days(days));
-
+    ) -> Result<(UrlEntry, bool), UrlError> {
+        // Validate the URL first
         let url_entry = UrlEntry {
-            original_url,
+            original_url: original_url.clone(),
             short_code: generate_short_code(),
             clicks: 0,
             created_at: Utc::now(),
-            expires_at,
+            expires_at: expires_in_days.map(|days| Utc::now() + Duration::days(days)),
         };
-
-        // Validate the URL
         url_entry.validate()?;
 
         // Check if URL already exists
         if let Some(existing) = self
             .collection
-            .find_one(doc! { "original_url": &url_entry.original_url })
+            .find_one(doc! { "original_url": &original_url })
             .await?
         {
-            return Ok(existing);
+            return Ok((existing, false)); // false indicates existing URL
         }
 
         // Insert new URL
         self.collection.insert_one(&url_entry).await?;
-        Ok(url_entry)
+        Ok((url_entry, true)) // true indicates new URL
     }
 
     pub async fn get_url_by_code(&self, short_code: &str) -> Result<Option<UrlEntry>, UrlError> {
