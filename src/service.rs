@@ -2,6 +2,7 @@ use crate::error::UrlError;
 use crate::model::UrlEntry;
 use crate::utils::generate_short_code;
 use chrono::{Duration, Utc};
+use futures::StreamExt;
 use mongodb::{bson::doc, options::IndexOptions, Client, Collection, IndexModel};
 use validator::Validate;
 
@@ -74,5 +75,20 @@ impl UrlService {
             )
             .await
             .map_err(UrlError::from)
+    }
+
+    pub async fn get_urls(&self) -> Result<Vec<UrlEntry>, UrlError> {
+        let mut cursor = self
+            .collection
+            .find(doc! {})
+            .await
+            .map_err(UrlError::from)?;
+
+        let mut urls = Vec::new();
+        while let Some(url) = cursor.next().await {
+            urls.push(url.map_err(UrlError::from)?);
+        }
+
+        Ok(urls)
     }
 }

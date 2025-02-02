@@ -25,6 +25,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(url_service.clone()))
             .service(routes::url::create)
+            .service(routes::url::list)
             .service(routes::url::redirect)
     })
     .bind(("127.0.0.1", 8080))?

@@ -50,3 +50,10 @@ pub async fn redirect(
         None => Err(UrlError::NotFound),
     }
 }
+
+/// Get all URLs
+#[get("/api/urls")]
+pub async fn list(service: web::Data<UrlService>) -> Result<HttpResponse, UrlError> {
+    let urls = service.get_urls().await?;
+    Ok(HttpResponse::Ok().json(urls))
+}
