@@ -5,6 +5,7 @@
     "bson",
     "chrono",
     "dotenv",
+    "Encryptor",
     "serde",
     "thiserror"
   ]

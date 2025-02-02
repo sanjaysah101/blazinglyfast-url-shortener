@@ -23,7 +23,9 @@ impl actix_web::ResponseError for UrlError {
                 actix_web::HttpResponse::BadRequest().json(self.to_string())
             }
             UrlError::NotFound => actix_web::HttpResponse::NotFound().json(self.to_string()),
-            _ => actix_web::HttpResponse::InternalServerError().json(self.to_string()),
+            UrlError::DatabaseError(_) | UrlError::InternalError(_) => {
+                actix_web::HttpResponse::InternalServerError().json(self.to_string())
+            }
         }
     }
 }
