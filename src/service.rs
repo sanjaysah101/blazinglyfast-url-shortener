@@ -1,3 +1,4 @@
+use crate::error::UrlError;
 use crate::model::UrlEntry;
 use crate::utils::generate_short_code;
 use mongodb::{bson::doc, options::IndexOptions, Client, Collection, IndexModel};
@@ -20,49 +21,47 @@ impl UrlService {
         service
     }
 
-    async fn ensure_indexes(&self) {
+    async fn ensure_indexes(&self) -> Result<(), UrlError> {
         let options = IndexOptions::builder().unique(true).build();
         let model = IndexModel::builder()
             .keys(doc! { "short_code": 1 })
             .options(options)
             .build();
 
-        if let Err(e) = self.collection.create_index(model).await {
-            eprintln!("Failed to create index: {}", e);
-        }
+        self.collection
+            .create_index(model)
+            .await
+            .map_err(|e| UrlError::InternalError(format!("Failed to create index: {}", e)))?;
+        Ok(())
     }
 
-    pub async fn create_url(&self, original_url: String) -> Result<UrlEntry, String> {
+    pub async fn create_url(&self, original_url: String) -> Result<UrlEntry, UrlError> {
         let url_entry = UrlEntry {
             original_url,
             short_code: generate_short_code(),
         };
 
         // Validate the URL
-        if let Err(errors) = url_entry.validate() {
-            return Err(errors.to_string());
-        }
+        url_entry.validate()?;
 
         // Check if URL already exists
-        if let Ok(Some(existing)) = self
+        if let Some(existing) = self
             .collection
             .find_one(doc! { "original_url": &url_entry.original_url })
-            .await
+            .await?
         {
             return Ok(existing);
         }
 
         // Insert new URL
-        match self.collection.insert_one(&url_entry).await {
-            Ok(_) => Ok(url_entry),
-            Err(e) => Err(e.to_string()),
-        }
+        self.collection.insert_one(&url_entry).await?;
+        Ok(url_entry)
     }
 
-    pub async fn get_url_by_code(&self, short_code: &str) -> Result<Option<UrlEntry>, String> {
+    pub async fn get_url_by_code(&self, short_code: &str) -> Result<Option<UrlEntry>, UrlError> {
         self.collection
             .find_one(doc! { "short_code": short_code })
             .await
-            .map_err(|e| e.to_string())
+            .map_err(UrlError::from)
     }
 }

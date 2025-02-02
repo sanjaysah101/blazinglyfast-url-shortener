@@ -1,7 +1,9 @@
+mod error;
 mod model;
 mod service;
 mod utils;
 
+use crate::error::UrlError;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
 use mongodb::Client;
 use serde::Deserialize;
@@ -20,11 +22,9 @@ struct CreateUrlRequest {
 async fn create_short_url(
     service: web::Data<UrlService>,
     request: web::Json<CreateUrlRequest>,
-) -> HttpResponse {
-    match service.create_url(request.url.clone()).await {
-        Ok(entry) => HttpResponse::Ok().json(entry),
-        Err(err) => HttpResponse::BadRequest().body(err),
-    }
+) -> Result<HttpResponse, UrlError> {
+    let entry = service.create_url(request.url.clone()).await?;
+    Ok(HttpResponse::Ok().json(entry))
 }
 
 /// Redirect to original URL using short code
@@ -32,13 +32,12 @@ async fn create_short_url(
 async fn redirect_url(
     service: web::Data<UrlService>,
     short_code: web::Path<String>,
-) -> HttpResponse {
-    match service.get_url_by_code(&short_code).await {
-        Ok(Some(entry)) => HttpResponse::MovedPermanently()
+) -> Result<HttpResponse, UrlError> {
+    match service.get_url_by_code(&short_code).await? {
+        Some(entry) => Ok(HttpResponse::MovedPermanently()
             .append_header(("Location", entry.original_url))
-            .finish(),
-        Ok(None) => HttpResponse::NotFound().body("Short URL not found"),
-        Err(err) => HttpResponse::InternalServerError().body(err),
+            .finish()),
+        None => Err(UrlError::NotFound),
     }
 }
 
