@@ -1,5 +1,5 @@
 use actix_web::{
-    test::{call_and_read_body, call_and_read_body_json, init_service, TestRequest},
+    test::{call_and_read_body, init_service, TestRequest},
     web::Bytes,
 };
 
@@ -7,48 +7,48 @@ use super::*;
 
 #[actix_web::test]
 #[ignore = "requires MongoDB instance running"]
-async fn test() {
+async fn test_url_creation_and_redirection() {
     dotenv::dotenv().ok();
     let uri = std::env::var("MONGODB_URI").expect("MONGODB_URI not set");
-    println!("uri: {}", uri);
-
-    let client = Client::with_uri_str(uri).await.expect("failed to connect");
-
-    // Clear any data currently in the users collection.
+    
+    let client = Client::with_uri_str(uri).await.expect("Failed to connect");
+    
+    // Clear existing data
     client
         .database(DB_NAME)
-        .collection::<User>(COLL_NAME)
+        .collection::<UrlEntry>(COLL_NAME)
         .drop()
         .await
-        .expect("drop collection should succeed");
+        .expect("Failed to clear collection");
 
     let app = init_service(
         App::new()
             .app_data(web::Data::new(client))
-            .service(add_user)
-            .service(get_user),
+            .service(create_short_url)
+            .service(redirect_url),
     )
     .await;
 
-    let user = User {
-        first_name: "Jane".into(),
-        last_name: "Doe".into(),
-        username: "jane".into(),
-        email: "example@example.com".into(),
-    };
+    let test_url = "https://example.com";
+    let test_code = "abc123";
 
-    let req = TestRequest::post()
-        .uri("/add_user")
-        .set_form(&user)
+    // Test URL creation
+    let create_req = TestRequest::post()
+        .uri("/create")
+        .set_json(UrlEntry {
+            original_url: test_url.to_string(),
+            short_code: test_code.to_string(),
+        })
         .to_request();
 
-    let response = call_and_read_body(&app, req).await;
-    assert_eq!(response, Bytes::from_static(b"user added"));
+    let response = call_and_read_body(&app, create_req).await;
+    assert_eq!(response, Bytes::from_static(b"Short URL created"));
 
-    let req = TestRequest::get()
-        .uri(&format!("/get_user/{}", &user.username))
+    // Test redirection
+    let redirect_req = TestRequest::get()
+        .uri(&format!("/{}", test_code))
         .to_request();
 
-    let response: User = call_and_read_body_json(&app, req).await;
-    assert_eq!(response, user);
+    let response = call_and_read_body(&app, redirect_req).await;
+    assert!(response.starts_with(b"Moved Permanently"));
 }

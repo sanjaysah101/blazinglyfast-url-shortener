@@ -1,10 +1,10 @@
 [package]
-name = "blazinglyfast-url-shortener"
+name = "url-shortener"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 actix-web = "4.9.0"
 mongodb = "3.2.0"
-serde = "1.0.217"
+serde = { version = "1.0.217", features = ["derive"] }
 dotenv = "0.15.0"

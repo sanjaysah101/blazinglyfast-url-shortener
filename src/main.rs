@@ -3,50 +3,57 @@ mod model;
 mod test;
 
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
-use model::User;
+use model::UrlEntry;
 use mongodb::{bson::doc, options::IndexOptions, Client, Collection, IndexModel};
 
-const DB_NAME: &str = "myApp";
-const COLL_NAME: &str = "users";
+const DB_NAME: &str = "url_shortener";
+const COLL_NAME: &str = "urls";
 
-/// Adds a new user to the "users" collection in the database.
-#[post("/add_user")]
-async fn add_user(client: web::Data<Client>, user: web::Json<User>) -> HttpResponse {
+/// Create a short URL
+#[post("/create")]
+async fn create_short_url(
+    client: web::Data<Client>,
+    url_entry: web::Json<UrlEntry>,
+) -> HttpResponse {
     let collection = client.database(DB_NAME).collection(COLL_NAME);
-    let result = collection.insert_one(user.into_inner()).await;
-    match result {
-        Ok(_) => HttpResponse::Ok().body("user added"),
+    
+    match collection.insert_one(url_entry.into_inner()).await {
+        Ok(_) => HttpResponse::Ok().body("Short URL created"),
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }
 
-/// Gets the user with the supplied username.
-#[get("/get_user/{username}")]
-async fn get_user(client: web::Data<Client>, username: web::Path<String>) -> HttpResponse {
-    let username = username.into_inner();
-    let collection: Collection<User> = client.database(DB_NAME).collection(COLL_NAME);
-    match collection.find_one(doc! { "username": &username }).await {
-        Ok(Some(user)) => HttpResponse::Ok().json(user),
-        Ok(None) => {
-            HttpResponse::NotFound().body(format!("No user found with username {username}"))
-        }
+/// Redirect to original URL using short code
+#[get("/{short_code}")]
+async fn redirect_url(
+    client: web::Data<Client>,
+    short_code: web::Path<String>,
+) -> HttpResponse {
+    let collection: Collection<UrlEntry> = client.database(DB_NAME).collection(COLL_NAME);
+    
+    match collection.find_one(doc! { "short_code": &short_code.into_inner() }).await {
+        Ok(Some(entry)) => HttpResponse::MovedPermanently()
+            .append_header(("Location", entry.original_url))
+            .finish(),
+        Ok(None) => HttpResponse::NotFound().body("Short URL not found"),
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }
 
-/// Creates an index on the "username" field to force the values to be unique.
-async fn create_username_index(client: &Client) {
+/// Create index on short_code field
+async fn create_short_code_index(client: &Client) {
     let options = IndexOptions::builder().unique(true).build();
     let model = IndexModel::builder()
-        .keys(doc! { "username": 1 })
+        .keys(doc! { "short_code": 1 })
         .options(options)
         .build();
+    
     client
         .database(DB_NAME)
-        .collection::<User>(COLL_NAME)
+        .collection::<UrlEntry>(COLL_NAME)
         .create_index(model)
         .await
-        .expect("creating an index should succeed");
+        .expect("Failed to create index");
 }
 
 #[actix_web::main]
@@ -54,20 +61,14 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     let uri = std::env::var("MONGODB_URI").expect("MONGODB_URI not set");
 
-    println!("uri: {}", uri);
-
-    let client = Client::with_uri_str(uri).await.expect("failed to connect");
-    create_username_index(&client).await;
+    let client = Client::with_uri_str(uri).await.expect("Failed to connect");
+    create_short_code_index(&client).await;
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(client.clone()))
-            .service(add_user)
-            .service(get_user)
-            .route(
-                "/",
-                web::get().to(|| async { HttpResponse::Ok().body("Hello World") }),
-            )
+            .service(create_short_url)
+            .service(redirect_url)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
