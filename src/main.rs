@@ -5,6 +5,7 @@ mod test;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
 use model::UrlEntry;
 use mongodb::{bson::doc, options::IndexOptions, Client, Collection, IndexModel};
+use validator::Validate;
 
 const DB_NAME: &str = "url_shortener";
 const COLL_NAME: &str = "urls";
@@ -15,8 +16,13 @@ async fn create_short_url(
     client: web::Data<Client>,
     url_entry: web::Json<UrlEntry>,
 ) -> HttpResponse {
+    // Validate the URL entry
+    if let Err(errors) = url_entry.validate() {
+        return HttpResponse::BadRequest().json(errors);
+    }
+
     let collection = client.database(DB_NAME).collection(COLL_NAME);
-    
+
     match collection.insert_one(url_entry.into_inner()).await {
         Ok(_) => HttpResponse::Ok().body("Short URL created"),
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
@@ -25,13 +31,13 @@ async fn create_short_url(
 
 /// Redirect to original URL using short code
 #[get("/{short_code}")]
-async fn redirect_url(
-    client: web::Data<Client>,
-    short_code: web::Path<String>,
-) -> HttpResponse {
+async fn redirect_url(client: web::Data<Client>, short_code: web::Path<String>) -> HttpResponse {
     let collection: Collection<UrlEntry> = client.database(DB_NAME).collection(COLL_NAME);
-    
-    match collection.find_one(doc! { "short_code": &short_code.into_inner() }).await {
+
+    match collection
+        .find_one(doc! { "short_code": &short_code.into_inner() })
+        .await
+    {
         Ok(Some(entry)) => HttpResponse::MovedPermanently()
             .append_header(("Location", entry.original_url))
             .finish(),
@@ -47,7 +53,7 @@ async fn create_short_code_index(client: &Client) {
         .keys(doc! { "short_code": 1 })
         .options(options)
         .build();
-    
+
     client
         .database(DB_NAME)
         .collection::<UrlEntry>(COLL_NAME)

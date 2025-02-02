@@ -10,9 +10,9 @@ use super::*;
 async fn test_url_creation_and_redirection() {
     dotenv::dotenv().ok();
     let uri = std::env::var("MONGODB_URI").expect("MONGODB_URI not set");
-    
+
     let client = Client::with_uri_str(uri).await.expect("Failed to connect");
-    
+
     // Clear existing data
     client
         .database(DB_NAME)
