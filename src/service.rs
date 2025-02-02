@@ -53,34 +53,39 @@ impl UrlService {
         original_url: String,
         expires_in_days: Option<i64>,
     ) -> Result<(UrlEntry, bool), UrlError> {
-        // Validate first
+        // Encrypt the URL first
+        let encrypted_url = self
+            .encryptor
+            .encrypt(&original_url)
+            .map_err(|e| UrlError::InternalError(e))?;
+
+        // Check if URL already exists (using encrypted value)
+        let existing_entries = self.collection.find(doc! {}).await?;
+
+        let mut cursor = existing_entries;
+        while let Some(url) = cursor.next().await {
+            let mut entry = url.map_err(UrlError::from)?;
+            let decrypted = self
+                .encryptor
+                .decrypt(&entry.encrypted_url)
+                .map_err(|e| UrlError::InternalError(e))?;
+
+            if decrypted == original_url {
+                entry.original_url = decrypted;
+                return Ok((entry, false));
+            }
+        }
+
+        // Create new entry if URL doesn't exist
         let url_entry = UrlEntry {
             original_url: original_url.clone(),
-            encrypted_url: self
-                .encryptor
-                .encrypt(&original_url)
-                .map_err(|e| UrlError::InternalError(e))?,
+            encrypted_url,
             short_code: generate_short_code(),
             clicks: 0,
             created_at: Utc::now(),
             expires_at: expires_in_days.map(|days| Utc::now() + Duration::days(days)),
         };
         url_entry.validate()?;
-
-        // Check if URL already exists (using encrypted value)
-        if let Some(existing) = self
-            .collection
-            .find_one(doc! { "encrypted_url": &url_entry.encrypted_url })
-            .await?
-        {
-            // Decrypt the URL before returning
-            let mut decrypted = existing.clone();
-            decrypted.original_url = self
-                .encryptor
-                .decrypt(&existing.encrypted_url)
-                .map_err(|e| UrlError::InternalError(e))?;
-            return Ok((decrypted, false));
-        }
 
         self.collection.insert_one(&url_entry).await?;
         Ok((url_entry, true))
