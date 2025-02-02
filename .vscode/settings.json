@@ -3,6 +3,7 @@
     "actix",
     "blazinglyfast",
     "bson",
+    "chrono",
     "dotenv",
     "serde",
     "thiserror"

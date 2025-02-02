@@ -1,6 +1,7 @@
 use crate::error::UrlError;
 use crate::model::UrlEntry;
 use crate::utils::generate_short_code;
+use chrono::{Duration, Utc};
 use mongodb::{bson::doc, options::IndexOptions, Client, Collection, IndexModel};
 use validator::Validate;
 
@@ -35,10 +36,19 @@ impl UrlService {
         Ok(())
     }
 
-    pub async fn create_url(&self, original_url: String) -> Result<UrlEntry, UrlError> {
+    pub async fn create_url(
+        &self,
+        original_url: String,
+        expires_in_days: Option<i64>,
+    ) -> Result<UrlEntry, UrlError> {
+        let expires_at = expires_in_days.map(|days| Utc::now() + Duration::days(days));
+
         let url_entry = UrlEntry {
             original_url,
             short_code: generate_short_code(),
+            clicks: 0,
+            created_at: Utc::now(),
+            expires_at,
         };
 
         // Validate the URL
@@ -59,8 +69,12 @@ impl UrlService {
     }
 
     pub async fn get_url_by_code(&self, short_code: &str) -> Result<Option<UrlEntry>, UrlError> {
+        // Use findOneAndUpdate to atomically update and return the document
         self.collection
-            .find_one(doc! { "short_code": short_code })
+            .find_one_and_update(
+                doc! { "short_code": short_code },
+                doc! { "$inc": { "clicks": 1 } },
+            )
             .await
             .map_err(UrlError::from)
     }

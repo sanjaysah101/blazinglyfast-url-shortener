@@ -15,6 +15,7 @@ const COLL_NAME: &str = "urls";
 #[derive(Deserialize)]
 struct CreateUrlRequest {
     url: String,
+    expires_in_days: Option<i64>,
 }
 
 /// Create a short URL
@@ -23,7 +24,9 @@ async fn create_short_url(
     service: web::Data<UrlService>,
     request: web::Json<CreateUrlRequest>,
 ) -> Result<HttpResponse, UrlError> {
-    let entry = service.create_url(request.url.clone()).await?;
+    let entry = service
+        .create_url(request.url.clone(), request.expires_in_days)
+        .await?;
     Ok(HttpResponse::Ok().json(entry))
 }
 
@@ -34,9 +37,20 @@ async fn redirect_url(
     short_code: web::Path<String>,
 ) -> Result<HttpResponse, UrlError> {
     match service.get_url_by_code(&short_code).await? {
-        Some(entry) => Ok(HttpResponse::MovedPermanently()
-            .append_header(("Location", entry.original_url))
-            .finish()),
+        Some(entry) => {
+            let url = if !entry.original_url.starts_with("http://")
+                && !entry.original_url.starts_with("https://")
+            {
+                format!("http://{}", entry.original_url)
+            } else {
+                entry.original_url
+            };
+
+            Ok(HttpResponse::TemporaryRedirect()
+                .append_header(("Location", url))
+                .append_header(("Cache-Control", "no-cache, no-store, must-revalidate"))
+                .finish())
+        }
         None => Err(UrlError::NotFound),
     }
 }
