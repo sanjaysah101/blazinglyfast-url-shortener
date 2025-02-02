@@ -71,6 +71,7 @@ impl UrlService {
                 .map_err(|e| UrlError::InternalError(e))?;
 
             if decrypted == original_url {
+                // Set the decrypted URL before returning
                 entry.original_url = decrypted;
                 return Ok((entry, false));
             }
@@ -78,8 +79,8 @@ impl UrlService {
 
         // Create new entry if URL doesn't exist
         let url_entry = UrlEntry {
-            original_url: original_url.clone(),
             encrypted_url,
+            original_url: original_url.clone(), // Store decrypted URL for response
             short_code: generate_short_code(),
             clicks: 0,
             created_at: Utc::now(),
@@ -87,7 +88,17 @@ impl UrlService {
         };
         url_entry.validate()?;
 
-        self.collection.insert_one(&url_entry).await?;
+        // Store only encrypted version in database
+        let db_entry = UrlEntry {
+            encrypted_url: url_entry.encrypted_url.clone(),
+            original_url: String::new(), // This won't be used
+            short_code: url_entry.short_code.clone(),
+            clicks: url_entry.clicks,
+            created_at: url_entry.created_at,
+            expires_at: url_entry.expires_at,
+        };
+
+        self.collection.insert_one(&db_entry).await?;
         Ok((url_entry, true))
     }
 
@@ -122,6 +133,7 @@ impl UrlService {
         let mut urls = Vec::new();
         while let Some(url) = cursor.next().await {
             let mut entry = url.map_err(UrlError::from)?;
+            // Decrypt the URL before sending
             entry.original_url = self
                 .encryptor
                 .decrypt(&entry.encrypted_url)

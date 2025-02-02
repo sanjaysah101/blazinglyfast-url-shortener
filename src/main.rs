@@ -5,6 +5,8 @@ mod routes;
 mod service;
 mod utils;
 
+use actix_cors::Cors;
+use actix_files as fs;
 use actix_web::{web, App, HttpServer};
 use mongodb::Client;
 use service::UrlService;
@@ -23,11 +25,15 @@ async fn main() -> std::io::Result<()> {
     let url_service = UrlService::new(&client, DB_NAME, COLL_NAME);
 
     HttpServer::new(move || {
+        let cors = Cors::permissive(); // For development only
+
         App::new()
+            .wrap(cors)
             .app_data(web::Data::new(url_service.clone()))
             .service(routes::url::create)
             .service(routes::url::list)
             .service(routes::url::redirect)
+            .service(fs::Files::new("/", "src/static").index_file("index.html"))
     })
     .bind(("127.0.0.1", 8080))?
     .run()

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>URL Shortener</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      input[type='url'],
+      input[type='number'] {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      button {
+        background-color: #4caf50;
+        color: white;
+        padding: 10px 15px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      .urls-list {
+        margin-top: 20px;
+      }
+      .url-item {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+      }
+      .short-url {
+        color: #2196f3;
+        text-decoration: none;
+      }
+      .error {
+        color: #f44336;
+        margin-top: 5px;
+      }
+      .loading {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+      }
+      .copy-button {
+        background-color: #2196f3;
+        padding: 5px 10px;
+        margin-left: 10px;
+        font-size: 12px;
+      }
+      .copied {
+        background-color: #4caf50;
+      }
+      .url-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .url-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .url-details {
+        color: #666;
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>URL Shortener</h1>
+
+      <!-- URL Shortening Form -->
+      <div class="form-group">
+        <input type="url" id="urlInput" placeholder="Enter URL to shorten" />
+      </div>
+      <div class="form-group">
+        <input
+          type="number"
+          id="expiryDays"
+          placeholder="Expiry days (optional)"
+        />
+      </div>
+      <button onclick="shortenUrl()">Shorten URL</button>
+      <p id="error" class="error"></p>
+
+      <!-- URLs List -->
+      <div class="urls-list" id="urlsList">
+        <h2>Recent URLs</h2>
+        <!-- URLs will be populated here -->
+      </div>
+    </div>
+
+    <script>
+      const API_BASE_URL = 'http://localhost:8080';
+
+      async function shortenUrl() {
+        const urlInput = document.getElementById('urlInput');
+        const expiryDays = document.getElementById('expiryDays');
+        const errorElement = document.getElementById('error');
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/urls`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: urlInput.value,
+              expires_in_days: expiryDays.value
+                ? parseInt(expiryDays.value)
+                : null,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to shorten URL');
+          }
+
+          const data = await response.json();
+          urlInput.value = '';
+          expiryDays.value = '';
+          errorElement.textContent = '';
+
+          // Refresh the URLs list
+          loadUrls();
+        } catch (error) {
+          errorElement.textContent = error.message;
+        }
+      }
+
+      async function copyToClipboard(text, buttonElement) {
+        try {
+          await navigator.clipboard.writeText(text);
+          buttonElement.textContent = 'Copied!';
+          buttonElement.classList.add('copied');
+          setTimeout(() => {
+            buttonElement.textContent = 'Copy';
+            buttonElement.classList.remove('copied');
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+      }
+
+      async function loadUrls() {
+        const urlsList = document.getElementById('urlsList');
+
+        try {
+          urlsList.innerHTML = '<div class="loading">Loading URLs...</div>';
+
+          const response = await fetch(`${API_BASE_URL}/api/urls`);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const urls = await response.json();
+
+          const urlsHtml = urls
+            .map(
+              (url) => `
+              <div class="url-item">
+                <div class="url-row">
+                  <div class="original-url">
+                    Original: <a href="${url.original_url}" target="_blank">${
+                url.original_url
+              }</a>
+                  </div>
+                </div>
+                <div class="url-row">
+                  <div>Short URL: 
+                    <a class="short-url" href="${API_BASE_URL}/r/${
+                url.short_code
+              }" target="_blank">
+                      ${API_BASE_URL}/r/${url.short_code}
+                    </a>
+                  </div>
+                  <button 
+                    class="copy-button"
+                    onclick="copyToClipboard('${API_BASE_URL}/r/${
+                url.short_code
+              }', this)"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div class="url-details">
+                  <span>Clicks: ${url.clicks}</span> • 
+                  <span>Created: ${new Date(
+                    url.created_at
+                  ).toLocaleString()}</span>
+                  ${
+                    url.expires_at
+                      ? ` • <span>Expires: ${new Date(
+                          url.expires_at
+                        ).toLocaleString()}</span>`
+                      : ''
+                  }
+                </div>
+              </div>
+            `
+            )
+            .join('');
+
+          urlsList.innerHTML = `
+            <h2>Recent URLs</h2>
+            ${
+              urls.length
+                ? urlsHtml
+                : '<p>No URLs found. Create your first short URL above!</p>'
+            }
+          `;
+        } catch (error) {
+          urlsList.innerHTML = `
+            <p class="error">
+              Failed to load URLs: ${error.message}
+              <button onclick="loadUrls()" style="margin-left: 10px">Try Again</button>
+            </p>
+          `;
+        }
+      }
+
+      // Load URLs when page loads
+      document.addEventListener('DOMContentLoaded', loadUrls);
+    </script>
+  </body>
+</html>

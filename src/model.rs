@@ -8,7 +8,6 @@ use validator::Validate;
 pub struct UrlEntry {
     #[validate(url(message = "Must be a valid URL"))]
     #[serde(default)]
-    #[serde(skip_serializing)]
     pub original_url: String,
     #[serde(rename = "encrypted_url")]
     pub encrypted_url: String,
