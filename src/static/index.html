@@ -21,8 +21,7 @@
       .form-group {
         margin-bottom: 15px;
       }
-      input[type='url'],
-      input[type='number'] {
+      .form-group input {
         width: 100%;
         padding: 8px;
         border: 1px solid #ddd;
@@ -83,6 +82,12 @@
         color: #666;
         font-size: 0.9em;
       }
+      .form-group input:invalid {
+        border-color: #ff6b6b;
+      }
+      .form-group input:invalid:focus {
+        outline-color: #ff6b6b;
+      }
     </style>
   </head>
   <body>
@@ -98,6 +103,15 @@
           type="number"
           id="expiryDays"
           placeholder="Expiry days (optional)"
+        />
+      </div>
+      <div class="form-group">
+        <input
+          type="text"
+          id="shortCodeInput"
+          placeholder="Custom short code (optional)"
+          pattern="[a-zA-Z0-9-_]{3,20}"
+          title="3-20 characters, letters, numbers, dash and underscore only"
         />
       </div>
       <button onclick="shortenUrl()">Shorten URL</button>
@@ -116,6 +130,7 @@
       async function shortenUrl() {
         const urlInput = document.getElementById('urlInput');
         const expiryDays = document.getElementById('expiryDays');
+        const shortCodeInput = document.getElementById('shortCodeInput');
         const errorElement = document.getElementById('error');
 
         try {
@@ -129,16 +144,19 @@
               expires_in_days: expiryDays.value
                 ? parseInt(expiryDays.value)
                 : null,
+              short_code: shortCodeInput.value || null,
             }),
           });
 
           if (!response.ok) {
-            throw new Error('Failed to shorten URL');
+            const error = await response.text();
+            throw new Error(error || 'Failed to shorten URL');
           }
 
           const data = await response.json();
           urlInput.value = '';
           expiryDays.value = '';
+          shortCodeInput.value = '';
           errorElement.textContent = '';
 
           // Refresh the URLs list

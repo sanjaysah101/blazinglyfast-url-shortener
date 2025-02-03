@@ -6,7 +6,7 @@ use base64::Engine;
 use chrono::{Duration, Utc};
 use futures::StreamExt;
 use mongodb::{bson::doc, options::IndexOptions, Client, Collection, IndexModel};
-use validator::Validate;
+use validator::{Validate, ValidationError, ValidationErrors};
 
 #[derive(Clone)]
 pub struct UrlService {
@@ -52,7 +52,37 @@ impl UrlService {
         &self,
         original_url: String,
         expires_in_days: Option<i64>,
+        short_code: Option<String>,
     ) -> Result<(UrlEntry, bool), UrlError> {
+        // Validate custom short code if provided
+        if let Some(code) = &short_code {
+            if code.len() < 3 || code.len() > 20 {
+                let mut errors = ValidationErrors::new();
+                errors.add(
+                    "short_code",
+                    ValidationError::new("length").with_message(std::borrow::Cow::Borrowed(
+                        "Short code must be between 3 and 20 characters",
+                    )),
+                );
+                return Err(UrlError::ValidationError(errors));
+            }
+            // Check if short code already exists
+            if let Some(_) = self
+                .collection
+                .find_one(doc! { "short_code": code })
+                .await?
+            {
+                let mut errors = ValidationErrors::new();
+                errors.add(
+                    "short_code",
+                    ValidationError::new("already_exists").with_message(
+                        std::borrow::Cow::Borrowed("This short code is already taken"),
+                    ),
+                );
+                return Err(UrlError::ValidationError(errors));
+            }
+        }
+
         // Encrypt the URL first
         let encrypted_url = self
             .encryptor
@@ -73,7 +103,14 @@ impl UrlService {
             if decrypted == original_url {
                 // Set the decrypted URL before returning
                 entry.original_url = decrypted;
-                return Ok((entry, false));
+                // Return a specific error or message indicating the URL already exists
+                let mut errors = ValidationErrors::new();
+                errors.add(
+                    "original_url",
+                    ValidationError::new("already_exists")
+                        .with_message(std::borrow::Cow::Borrowed("This URL is already shortened")),
+                );
+                return Err(UrlError::ValidationError(errors));
             }
         }
 
@@ -81,7 +118,7 @@ impl UrlService {
         let url_entry = UrlEntry {
             encrypted_url,
             original_url: original_url.clone(), // Store decrypted URL for response
-            short_code: generate_short_code(),
+            short_code: short_code.unwrap_or_else(generate_short_code), // Use custom code or generate
             clicks: 0,
             created_at: Utc::now(),
             expires_at: expires_in_days.map(|days| Utc::now() + Duration::days(days)),

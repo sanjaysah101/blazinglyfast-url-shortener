@@ -7,6 +7,7 @@ use serde::Deserialize;
 pub struct CreateUrlRequest {
     url: String,
     expires_in_days: Option<i64>,
+    short_code: Option<String>,
 }
 
 /// Create a short URL
@@ -16,7 +17,11 @@ pub async fn create(
     request: web::Json<CreateUrlRequest>,
 ) -> Result<HttpResponse, UrlError> {
     let (entry, is_new) = service
-        .create_url(request.url.clone(), request.expires_in_days)
+        .create_url(
+            request.url.clone(),
+            request.expires_in_days,
+            request.short_code.clone(),
+        )
         .await?;
 
     Ok(if is_new {
