@@ -12,6 +12,9 @@ A high-performance URL shortener service built with Rust, featuring encryption, 
 - 📊 Click tracking
 - 🌐 RESTful API
 
+## Demo 
+[![Blazingly Fast URL Shortener](https://img.youtube.com/vi/-KUp34PHJuc/0.jpg)](https://youtu.be/-KUp34PHJuc)
+
 ## Prerequisites
 
 - Rust (latest stable)
